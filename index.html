@@ -1,0 +1,98 @@
+<!doctype html>
+	<head>
+	</head>
+	<body>
+		<div id="root"></div>
+		<script src="https://unpkg.com/react@15/dist/react.js"></script>
+		<script src="https://unpkg.com/react-dom@15/dist/react-dom.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-core/5.8.24/browser.min.js"></script>
+		<script type="text/babel">
+			class Posts extends React.Component {
+				render() {
+					let posts = this.props.posts.map((p) => {
+						let comments = p.comments.map((c) => {
+							return <span key={c.id}>{c.text}</span> 
+						})
+						return (
+							<div key={p.id}>
+								<p>Post #{p.id}:</p>
+								<div>Text: {p.text}</div>
+								<div>Likes: {p.likes.length}</div>
+								<div>Comments: {comments}</div>
+								<br />
+								<br />
+							</div>
+						) 
+					}); 
+					let subscription = () => {
+						return {__html: "subscription{feed{posts{id,text,likes{id},comments{id}}}}"};
+					}
+					return (
+						<div>
+							<p>This demo is subscribed to:</p>
+							<code dangerouslySetInnerHTML={subscription()}></code>
+							<p>Random posts are created each 2 seconds and the react component re-rendered with fresh data.</p>
+							{posts}
+						</div>
+					);
+				}
+			}
+			var ws = new WebSocket('ws://localhost:4449/gql?slug=reacteurope-test&query=subscription{feed{posts{id,text,likes{id},comments{id}}}}');
+			ws.onmessage = function (event) {
+				console.log(event.data);
+				renderApp(JSON.parse(event.data));
+			};
+			let renderApp = (d) => {
+				ReactDOM.render(
+					<Posts posts={d.data.feed.posts}/>,
+					document.getElementById('root')
+				);
+			}
+			var times = 3;
+			var i = 0;
+			var testDataInterval = setInterval(testData, 2000);
+			var postIds = [];
+			function testData() {
+				if (i === times) {
+					clearInterval(testDataInterval);
+					createLikesAndComments();
+				}
+				i += 1;
+				fetch('http://localhost:4449/gql', {
+					method: 'POST',
+					body: JSON.stringify({
+						query: 'mutation{createPost(ref:"S2U2-1",text:\"Post: #'+i+' text!\"){id,text}}'
+					}) 
+				}).then(function(response) {
+					return response.json()
+				}).then(function(r) {
+					var postId = r.data.createPost.id;
+					postIds.push(postId);
+					fetch('http://localhost:4449/gql', {
+						method: 'POST',
+						body: JSON.stringify({
+							query: 'mutation{likePost(ref:"S2U2-1",postId:'+postId+'){id}}'
+						}) 
+					})
+				})
+			}
+			function createLikesAndComments() {
+				postIds.forEach((postId) => {
+					fetch('http://localhost:4449/gql', {
+						method: 'POST',
+						body: JSON.stringify({
+							query: 'mutation{likePost(ref:"S2U2-1",postId:'+postId+'){id}}'
+						}) 
+					})
+					fetch('http://localhost:4449/gql', {
+						method: 'POST',
+						body: JSON.stringify({
+							query: 'mutation{commentPost(ref:\"S2U2-1\",postId:'+postId+',text:\"cool comment\"){id}}'
+						}) 
+					})
+				})
+
+			}
+		</script>
+	</body>
+</html>
